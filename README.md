@@ -17,6 +17,7 @@ This repository contains experiments and optimizations for **Apache TVM** target
 
 ```bash
 cd tvm
+git submodule update --init --recursive
 mkdir build
 cd build
 cp ../cmake/config.cmake .
