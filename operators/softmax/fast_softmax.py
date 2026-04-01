@@ -9,7 +9,7 @@ os.environ["TVM_NDK_CC"] = "riscv64-linux-gnu-gcc"
 os.environ["CC"] = "riscv64-linux-gnu-gcc"
 import tvm
 import tvm.te as te
-import tvm.tirx as tir
+import tvm.tir as tir
 import numpy as np
 
 BATCH    = 14
@@ -18,19 +18,19 @@ DTYPE    = "float32"
 
 OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "output", "fast_softmax_rvv"
+    "output", "fast"
 )
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TARGETS = {
-    "rv_scalar": {
+    "scalar": {
         "kind":    "llvm",
         "mtriple": "riscv64-linux-gnu",
         "mcpu":    "generic-rv64",
         "mabi":    "lp64d",
         "mattr":   ["+64bit", "+m", "+a", "+f", "+d", "+c"],
     },
-    "rvv_vector": {
+    "vector": {
         "kind":    "llvm",
         "mtriple": "riscv64-linux-gnu",
         "mcpu":    "generic-rv64",

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-[RISC-V RVV] add nn operator shows suboptimal vectorization (RVV slower than scalar).
+Reproduces TVM issue #18569:
+[RISC-V RVV] softmax shows suboptimal vectorization (RVV slower than scalar).
 
 """
 
@@ -10,9 +11,10 @@ os.environ["CC"] = "riscv64-linux-gnu-gcc"
 import tvm
 import tvm.te as te
 import tvm.topi as topi
+import numpy as np
 
-BATCH    = 1
-FEATURES = 64
+BATCH    = 14
+FEATURES = 185
 DTYPE    = "float32"
 
 OUTPUT_DIR = os.path.join(
@@ -40,31 +42,32 @@ TARGETS = {
 }
 
 
-def build_add(target_dict: dict):
+def build_softmax(target_dict: dict):
     """
-    Build element-wise add using the TVM TE pipeline:
-      te.placeholder -> topi.add -> te.create_prim_func -> tvm.build
+    Build softmax using the TVM TE pipeline:
+      te.placeholder -> topi.nn.softmax -> te.create_prim_func -> tvm.build
     """
     target = tvm.target.Target(target_dict)
 
+    # compute using TE + TOPI
     with target:
-        A = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="A")
-        B = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="B")
-        out = topi.add(A, B)
+        data = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="data")
+        out  = topi.nn.softmax(data, axis=1)
 
-        prim_func = te.create_prim_func([A, B, out])
-        ir_mod = tvm.IRModule({"add": prim_func})
+    prim_func = te.create_prim_func([data, out])
 
-        with tvm.transform.PassContext(opt_level=3):
-            lib = tvm.build(ir_mod, target=target)
+    ir_mod = tvm.IRModule({"softmax": prim_func})
+    with tvm.transform.PassContext(opt_level=3):
+        lib = tvm.build(ir_mod, target=target)
 
     return lib
 
 
 def save_and_disasm(lib, name: str):
-    so_path = os.path.join(OUTPUT_DIR, f"add_{name}.so")
-    asm_path = os.path.join(OUTPUT_DIR, f"add_{name}.asm")
+    so_path = os.path.join(OUTPUT_DIR, f"softmax_{name}.so")
+    asm_path = os.path.join(OUTPUT_DIR, f"softmax_{name}.asm")
     try:
+        # Export using the cross-linker
         lib.export_library(
             so_path,
             cc="riscv64-linux-gnu-gcc"   # tell TVM to use the cross-compiler
@@ -88,10 +91,13 @@ def save_and_disasm(lib, name: str):
 
 def main():
     print("=" * 65)
-    print("  RISC-V RVV add suboptimal vectorization")
+    print("  RISC-V RVV softmax suboptimal vectorization bug")
     print(f"  Input shape : ({BATCH}, {FEATURES})  dtype: {DTYPE}")
     print(f"  TVM version : {tvm.__version__}")
-    print(f"  LLVM version: {tvm.target.codegen.llvm_version_major()}")
+    try:
+        print(f"  LLVM version: {tvm.target.codegen.llvm_version_major()}")
+    except Exception:
+        pass
     print(f"  Output dir  : {OUTPUT_DIR}")
     print(f"{'='*65}\n")
 
@@ -103,7 +109,7 @@ def main():
         print(f"  mattr : {mattr_str}")
 
         try:
-            lib = build_add(target_dict)
+            lib = build_softmax(target_dict)
             print(f"[INFO] Build succeeded")
         except Exception as e:
             print(f"[ERROR]: Build FAILED: {e}")
