@@ -1,0 +1,139 @@
+000000000000125a <fast_sigmoid_tir_compute_>:
+    125a: 73 26 20 c2  	csrr	a2, vlenb
+    125e: 13 5f 16 00  	srli	t5, a2, 0x1
+    1262: b7 96 20 00  	lui	a3, 0x209
+    1266: 1b 87 26 71  	addiw	a4, a3, 0x712
+    126a: 97 53 00 00  	auipc	t2, 0x5
+    126e: 97 57 00 00  	auipc	a5, 0x5
+    1272: 13 88 e7 da  	addi	a6, a5, -0x252
+    1276: 97 58 00 00  	auipc	a7, 0x5
+    127a: 97 57 00 00  	auipc	a5, 0x5
+    127e: 93 82 a7 da  	addi	t0, a5, -0x256
+    1282: 97 57 00 00  	auipc	a5, 0x5
+    1286: 13 83 67 da  	addi	t1, a5, -0x25a
+    128a: 63 69 e7 1d  	bltu	a4, t5, 0x145c <fast_sigmoid_tir_compute_+0x202>
+    128e: 33 07 e0 41  	neg	a4, t5
+    1292: 9b 86 06 71  	addiw	a3, a3, 0x710
+    1296: 33 7e d7 00  	and	t3, a4, a3
+    129a: 93 1f 16 00  	slli	t6, a2, 0x1
+    129e: b7 06 b0 42  	lui	a3, 0x42b00
+    12a2: d3 87 06 f0  	fmv.w.x	fa5, a3
+    12a6: 57 77 10 0d  	vsetvli	a4, zero, e32, m2, ta, ma
+    12aa: 57 c4 06 5e  	vmv.v.x	v8, a3
+    12ae: b7 06 b0 c2  	lui	a3, 0xc2b00
+    12b2: 53 87 06 f0  	fmv.w.x	fa4, a3
+    12b6: 57 c5 06 5e  	vmv.v.x	v10, a3
+    12ba: b7 06 00 3f  	lui	a3, 0x3f000
+    12be: 57 c6 06 5e  	vmv.v.x	v12, a3
+    12c2: 87 a6 63 da  	flw	fa3, -0x25a(t2)
+    12c6: b7 06 00 4b  	lui	a3, 0x4b000
+    12ca: 53 86 06 f0  	fmv.w.x	fa2, a3
+    12ce: 97 56 00 00  	auipc	a3, 0x5
+    12d2: 87 a5 66 d4  	flw	fa1, -0x2ba(a3)
+    12d6: 97 56 00 00  	auipc	a3, 0x5
+    12da: 07 a5 26 d4  	flw	fa0, -0x2be(a3)
+    12de: 07 67 08 0a  	vlse32.v	v14, (a6), zero
+    12e2: 07 a0 a8 da  	flw	ft0, -0x256(a7)
+    12e6: 07 e8 02 0a  	vlse32.v	v16, (t0), zero
+    12ea: 07 69 03 0a  	vlse32.v	v18, (t1), zero
+    12ee: b7 0e 80 3f  	lui	t4, 0x3f800
+    12f2: 57 ca 0e 5e  	vmv.v.x	v20, t4
+    12f6: d3 80 0e f0  	fmv.w.x	ft1, t4
+    12fa: aa 87        	mv	a5, a0
+    12fc: 2e 87        	mv	a4, a1
+    12fe: f2 86        	mv	a3, t3
+    1300: 07 eb 87 22  	vl2re32.v	v22, (a5)
+    1304: 57 70 10 0d  	vsetvli	zero, zero, e32, m2, ta, ma
+    1308: 57 1b 6b 27  	vfneg.v	v22, v22
+    130c: 57 d0 67 6f  	vmflt.vf	v0, v22, fa5
+    1310: 57 0b 8b 5c  	vmerge.vvm	v22, v8, v22, v0
+    1314: 57 50 67 77  	vmfgt.vf	v0, v22, fa4
+    1318: 57 0c ab 5c  	vmerge.vvm	v24, v10, v22, v0
+    131c: 57 0b 0c 5e  	vmv.v.v	v22, v24
+    1320: 57 db c6 a2  	vfmadd.vf	v22, fa3, v12
+    1324: 57 1d 6b 2b  	vfabs.v	v26, v22
+    1328: 57 50 a6 6f  	vmflt.vf	v0, v26, fa2
+    132c: 73 56 21 00  	fsrmi	a2, 0x2
+    1330: 57 9d 60 49  	vfcvt.x.f.v	v26, v22, v0.t
+    1334: 73 10 26 00  	fsrm	a2
+    1338: 57 9d a1 49  	vfcvt.f.x.v	v26, v26, v0.t
+    133c: 57 70 10 05  	vsetvli	zero, zero, e32, m2, ta, mu
+    1340: 57 0e 0b 5e  	vmv.v.v	v28, v22
+    1344: 57 1e ab 21  	vfsgnj.vv	v28, v26, v22, v0.t
+    1348: 57 dc c5 bf  	vfnmsac.vf	v24, fa1, v28
+    134c: 57 5c c5 bf  	vfnmsac.vf	v24, fa0, v28
+    1350: 57 0d 0c 5e  	vmv.v.v	v26, v24
+    1354: 57 5d e0 a2  	vfmadd.vf	v26, ft0, v14
+    1358: 57 1d 0c a3  	vfmadd.vv	v26, v24, v16
+    135c: 57 1d 2c a3  	vfmadd.vv	v26, v24, v18
+    1360: 57 1d cc a2  	vfmadd.vv	v26, v24, v12
+    1364: 57 1d 4c a3  	vfmadd.vv	v26, v24, v20
+    1368: 57 1d 4c a3  	vfmadd.vv	v26, v24, v20
+    136c: 73 56 21 00  	fsrmi	a2, 0x2
+    1370: 57 9b 60 4b  	vfcvt.x.f.v	v22, v22
+    1374: 73 10 26 00  	fsrm	a2
+    1378: 57 bb 6b 97  	vsll.vi	v22, v22, 0x17
+    137c: 57 cb 6e 03  	vadd.vx	v22, v22, t4
+    1380: 57 1b 4d a3  	vfmadd.vv	v22, v26, v20
+    1384: 57 db 60 87  	vfrdiv.vf	v22, v22, ft1
+    1388: 27 0b 87 22  	vs2r.v	v22, (a4)
+    138c: b3 86 e6 41  	sub	a3, a3, t5
+    1390: 7e 97        	add	a4, a4, t6
+    1392: fe 97        	add	a5, a5, t6
+    1394: b5 f6        	bnez	a3, 0x1300 <fast_sigmoid_tir_compute_+0xa6>
+    1396: 0a 0e        	slli	t3, t3, 0x2
+    1398: b3 86 c5 01  	add	a3, a1, t3
+    139c: 72 95        	add	a0, a0, t3
+    139e: 37 66 82 00  	lui	a2, 0x826
+    13a2: 1b 06 86 c4  	addiw	a2, a2, -0x3b8
+    13a6: b2 95        	add	a1, a1, a2
+    13a8: 37 06 b0 42  	lui	a2, 0x42b00
+    13ac: d3 07 06 f0  	fmv.w.x	fa5, a2
+    13b0: 37 06 b0 c2  	lui	a2, 0xc2b00
+    13b4: 53 07 06 f0  	fmv.w.x	fa4, a2
+    13b8: 37 06 00 3f  	lui	a2, 0x3f000
+    13bc: d3 06 06 f0  	fmv.w.x	fa3, a2
+    13c0: 07 a6 63 da  	flw	fa2, -0x25a(t2)
+    13c4: 37 06 00 4b  	lui	a2, 0x4b000
+    13c8: 17 57 00 00  	auipc	a4, 0x5
+    13cc: 87 25 47 c6  	flw	fa1, -0x39c(a4)
+    13d0: 17 57 00 00  	auipc	a4, 0x5
+    13d4: 07 25 07 c6  	flw	fa0, -0x3a0(a4)
+    13d8: 07 20 08 00  	flw	ft0, 0x0(a6)
+    13dc: 87 a0 a8 da  	flw	ft1, -0x256(a7)
+    13e0: 07 a1 02 00  	flw	ft2, 0x0(t0)
+    13e4: 87 21 03 00  	flw	ft3, 0x0(t1)
+    13e8: 53 02 06 f0  	fmv.w.x	ft4, a2
+    13ec: 37 06 80 3f  	lui	a2, 0x3f800
+    13f0: d3 02 06 f0  	fmv.w.x	ft5, a2
+    13f4: 07 23 05 00  	flw	ft6, 0x0(a0)
+    13f8: 53 13 63 20  	fneg.s	ft6, ft6
+    13fc: 53 03 f3 28  	fmin.s	ft6, ft6, fa5
+    1400: 53 13 e3 28  	fmax.s	ft6, ft6, fa4
+    1404: c3 73 c3 68  	fmadd.s	ft7, ft6, fa2, fa3
+    1408: 53 a8 73 20  	fabs.s	fa6, ft7
+    140c: d3 17 48 a0  	flt.s	a5, fa6, ft4
+    1410: 53 a7 03 c0  	fcvt.w.s	a4, ft7, rdn
+    1414: 89 c7        	beqz	a5, 0x141e <fast_sigmoid_tir_compute_+0x1c4>
+    1416: 53 28 07 d0  	fcvt.s.w	fa6, a4, rdn
+    141a: d3 03 78 20  	fsgnj.s	ft7, fa6, ft7
+    141e: 43 f3 b3 30  	fmadd.s	ft6, ft7, fa1, ft6
+    1422: 43 f3 a3 30  	fmadd.s	ft6, ft7, fa0, ft6
+    1426: c3 73 13 00  	fmadd.s	ft7, ft6, ft1, ft0
+    142a: c3 f3 63 10  	fmadd.s	ft7, ft7, ft6, ft2
+    142e: c3 f3 63 18  	fmadd.s	ft7, ft7, ft6, ft3
+    1432: c3 f3 63 68  	fmadd.s	ft7, ft7, ft6, fa3
+    1436: c3 f3 63 28  	fmadd.s	ft7, ft7, ft6, ft5
+    143a: 43 f3 63 28  	fmadd.s	ft6, ft7, ft6, ft5
+    143e: 5e 07        	slli	a4, a4, 0x17
+    1440: 32 97        	add	a4, a4, a2
+    1442: d3 03 07 f0  	fmv.w.x	ft7, a4
+    1446: 43 73 73 28  	fmadd.s	ft6, ft6, ft7, ft5
+    144a: 53 f3 62 18  	fdiv.s	ft6, ft5, ft6
+    144e: 27 a0 66 00  	fsw	ft6, 0x0(a3)
+    1452: 91 06        	addi	a3, a3, 0x4
+    1454: 11 05        	addi	a0, a0, 0x4
+    1456: e3 9f b6 f8  	bne	a3, a1, 0x13f4 <fast_sigmoid_tir_compute_+0x19a>
+    145a: 82 80        	ret
+    145c: 01 4e        	li	t3, 0x0
+    145e: 25 bf        	j	0x1396 <fast_sigmoid_tir_compute_+0x13c>

@@ -11,26 +11,29 @@ import tvm
 import tvm.te as te
 import tvm.topi as topi
 import numpy as np
+import tvm.relax as relax
+from tvm.script import relax as R
+from tvm.script import tir as T
 
-BATCH    = 14
-FEATURES = 185
+BATCH, CHANNELS, H, W = 14, 23, 67, 99
+SHAPE = (BATCH, CHANNELS, H, W)
 DTYPE    = "float32"
 
 OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "..", "output", "softmax_rvv"
+    "output", "classic"
 )
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TARGETS = {
-    "rv_scalar": {
+    "scalar": {
         "kind":    "llvm",
         "mtriple": "riscv64-linux-gnu",
         "mcpu":    "generic-rv64",
         "mabi":    "lp64d",
         "mattr":   ["+64bit", "+m", "+a", "+f", "+d", "+c"],
     },
-    "rvv_vector": {
+    "vector": {
         "kind":    "llvm",
         "mtriple": "riscv64-linux-gnu",
         "mcpu":    "generic-rv64",
@@ -40,26 +43,31 @@ TARGETS = {
     },
 }
 
+@tvm.script.ir_module
+class SigmoidModule:
+    @R.function
+    def main(x: R.Tensor(SHAPE, DTYPE)):
+        with R.dataflow():
+            gv = relax.op.sigmoid(x)
+            R.output(gv)
+        return gv
 
-def build_softmax(target_dict: dict):
-    """
-    Build softmax using the TVM TE pipeline:
-      te.placeholder -> topi.nn.softmax -> te.create_prim_func -> tvm.build
-    """
+
+def build_sigmoid(target_dict):
     target = tvm.target.Target(target_dict)
 
-    # compute using TE + TOPI
-    with target:
-        data = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="data")
-        out  = topi.sigmoid(data, axis=1)
+    mod = SigmoidModule
 
-    prim_func = te.create_prim_func([data, out])
-
-    ir_mod = tvm.IRModule({"sigmoid": prim_func})
+    # Relax → TIR lowering pipeline
     with tvm.transform.PassContext(opt_level=3):
-        lib = tvm.build(ir_mod, target=target)
+        # mod = relax.transform.LegalizeOps()(mod)
+        # mod = relax.transform.AnnotateTIROpPattern()(mod)
+        # mod = relax.transform.FuseOps()(mod)
+        # mod = relax.transform.FuseTIR()(mod)
 
-    return lib
+        ex = relax.build(mod, target=target)
+
+    return ex
 
 
 def save_and_disasm(lib, name: str):
@@ -90,8 +98,8 @@ def save_and_disasm(lib, name: str):
 
 def main():
     print("=" * 65)
-    print("  RISC-V RVV softmax suboptimal vectorization bug")
-    print(f"  Input shape : ({BATCH}, {FEATURES})  dtype: {DTYPE}")
+    print("  RISC-V RVV sigmoid suboptimal vectorization bug")
+    print(f"  Input shape : {SHAPE}  dtype: {DTYPE}")
     print(f"  TVM version : {tvm.__version__}")
     try:
         print(f"  LLVM version: {tvm.target.codegen.llvm_version_major()}")
@@ -108,7 +116,7 @@ def main():
         print(f"  mattr : {mattr_str}")
 
         try:
-            lib = build_softmax(target_dict)
+            lib = build_sigmoid(target_dict)
             print(f"[INFO] Build succeeded")
         except Exception as e:
             print(f"[ERROR]: Build FAILED: {e}")

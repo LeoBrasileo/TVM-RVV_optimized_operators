@@ -1,0 +1,393 @@
+In the scalar version, the inner loop is simple: load one float, compute -x, call expf, do 1 + exp, divide, store. 
+It is scalar, but the control flow is compact and has no RVV setup overhead.
+
+In the vector version, TVM does this instead:
+
+it sets up RVV with vsetivli
+loads a vector with vle32.v
+computes -x with vfrsub.vf
+then spills the vector to the stack with vs2r.v
+for each lane!!, it reloads, extracts one scalar with vfmv.f.s, calls expf, then reinserts the result with vfslide1down.vf
+only after that does it finish with vector vfadd.vf and vfrdiv.vf, then stores with vse32.v
+
+So the expensive part, exp, is still scalar per element, while RVV is used mainly for shuffling data in and out.
+
+
+
+
+
+
+
+
+
+
+----------------- Scalar: 97 lines -----------------------
+
+af2: 71 71        	addi	sp, sp, -0xb0
+af4: 06 f5        	sd	ra, 0xa8(sp)
+af6: 22 f1        	sd	s0, 0xa0(sp)
+af8: 26 ed        	sd	s1, 0x98(sp)
+afa: 4a e9        	sd	s2, 0x90(sp)
+afc: 4e e5        	sd	s3, 0x88(sp)
+afe: 52 e1        	sd	s4, 0x80(sp)
+b00: d6 fc        	sd	s5, 0x78(sp)
+b02: da f8        	sd	s6, 0x70(sp)
+b04: de f4        	sd	s7, 0x68(sp)
+b06: e2 f0        	sd	s8, 0x60(sp)
+b08: e6 ec        	sd	s9, 0x58(sp)
+b0a: ea e8        	sd	s10, 0x50(sp)
+b0c: ee e4        	sd	s11, 0x48(sp)
+b0e: a2 a0        	fsd	fs0, 0x40(sp)
+b10: 26 bc        	fsd	fs1, 0x38(sp)
+b12: ae 8a        	mv	s5, a1
+b14: 2a 8c        	mv	s8, a0
+b16: 01 46        	li	a2, 0x0
+b18: 37 55 09 00  	lui	a0, 0x95
+b1c: 9b 06 c5 fb  	addiw	a3, a0, -0x44
+b20: 19 65        	lui	a0, 0x6
+b22: 1b 07 45 7a  	addiw	a4, a0, 0x7a4
+b26: 13 0b c0 18  	li	s6, 0x18c
+b2a: 53 04 00 f0  	fmv.w.x	fs0, zero
+b2e: 37 05 80 3f  	lui	a0, 0x3f800
+b32: d3 04 05 f0  	fmv.w.x	fs1, a0
+b36: 13 04 30 04  	li	s0, 0x43
+b3a: e2 8b        	mv	s7, s8
+b3c: 01 4d        	li	s10, 0x0
+b3e: 32 e8        	sd	a2, 0x10(sp)
+b40: 36 e4        	sd	a3, 0x8(sp)
+b42: 33 05 d6 02  	mul	a0, a2, a3
+b46: 13 05 c5 18  	addi	a0, a0, 0x18c
+b4a: 2a f0        	sd	a0, 0x20(sp)
+b4c: 56 ec        	sd	s5, 0x18(sp)
+b4e: 5e e0        	sd	s7, 0x0(sp)
+b50: 3a f4        	sd	a4, 0x28(sp)
+b52: 81 49        	li	s3, 0x0
+b54: b3 0d ed 02  	mul	s11, s10, a4
+b58: 02 75        	ld	a0, 0x20(sp)
+b5a: aa 9d        	add	s11, s11, a0
+b5c: 56 f8        	sd	s5, 0x30(sp)
+b5e: 5e 8a        	mv	s4, s7
+b60: 33 85 69 03  	mul	a0, s3, s6
+b64: 6e 95        	add	a0, a0, s11
+b66: b3 04 ac 00  	add	s1, s8, a0
+b6a: 56 89        	mv	s2, s5
+b6c: d2 8c        	mv	s9, s4
+b6e: 87 27 09 00  	flw	fa5, 0x0(s2)
+b72: 53 75 f4 08  	fsub.s	fa0, fs0, fa5
+b76: 97 00 00 00  	auipc	ra, 0x0
+b7a: e7 80 a0 9e  	jalr	-0x616(ra) <.plt+0x30>
+b7e: d3 77 95 00  	fadd.s	fa5, fa0, fs1
+b82: d3 f7 f4 18  	fdiv.s	fa5, fs1, fa5
+b86: 27 a0 fc 00  	fsw	fa5, 0x0(s9)
+b8a: 91 0c        	addi	s9, s9, 0x4
+b8c: 11 09        	addi	s2, s2, 0x4
+b8e: e3 90 9c fe  	bne	s9, s1, 0xb6e <tir_sigmoid_compute_+0x7c>
+b92: 85 09        	addi	s3, s3, 0x1
+b94: 13 0a ca 18  	addi	s4, s4, 0x18c
+b98: 93 8a ca 18  	addi	s5, s5, 0x18c
+b9c: e3 92 89 fc  	bne	s3, s0, 0xb60 <tir_sigmoid_compute_+0x6e>
+ba0: 05 0d        	addi	s10, s10, 0x1
+ba2: 22 77        	ld	a4, 0x28(sp)
+ba4: ba 9b        	add	s7, s7, a4
+ba6: c2 7a        	ld	s5, 0x30(sp)
+ba8: ba 9a        	add	s5, s5, a4
+baa: 5d 45        	li	a0, 0x17
+bac: e3 13 ad fa  	bne	s10, a0, 0xb52 <tir_sigmoid_compute_+0x60>
+bb0: 42 66        	ld	a2, 0x10(sp)
+bb2: 05 06        	addi	a2, a2, 0x1
+bb4: a2 66        	ld	a3, 0x8(sp)
+bb6: 82 6b        	ld	s7, 0x0(sp)
+bb8: b6 9b        	add	s7, s7, a3
+bba: e2 6a        	ld	s5, 0x18(sp)
+bbc: b6 9a        	add	s5, s5, a3
+bbe: 39 45        	li	a0, 0xe
+bc0: e3 1e a6 f6  	bne	a2, a0, 0xb3c <tir_sigmoid_compute_+0x4a>
+bc4: aa 70        	ld	ra, 0xa8(sp)
+bc6: 0a 74        	ld	s0, 0xa0(sp)
+bc8: ea 64        	ld	s1, 0x98(sp)
+bca: 4a 69        	ld	s2, 0x90(sp)
+bcc: aa 69        	ld	s3, 0x88(sp)
+bce: 0a 6a        	ld	s4, 0x80(sp)
+bd0: e6 7a        	ld	s5, 0x78(sp)
+bd2: 46 7b        	ld	s6, 0x70(sp)
+bd4: a6 7b        	ld	s7, 0x68(sp)
+bd6: 06 7c        	ld	s8, 0x60(sp)
+bd8: e6 6c        	ld	s9, 0x58(sp)
+bda: 46 6d        	ld	s10, 0x50(sp)
+bdc: a6 6d        	ld	s11, 0x48(sp)
+bde: 06 24        	fld	fs0, 0x40(sp)
+be0: e2 34        	fld	fs1, 0x38(sp)
+be2: 4d 61        	addi	sp, sp, 0xb0
+be4: 82 80        	ret
+
+
+
+------------------------------------------- Vectorized: 269 lines ---------------------------------------------
+aca: 51 71        	addi	sp, sp, -0xf0
+acc: 86 f5        	sd	ra, 0xe8(sp)
+ace: a2 f1        	sd	s0, 0xe0(sp)
+ad0: a6 ed        	sd	s1, 0xd8(sp)
+ad2: ca e9        	sd	s2, 0xd0(sp)
+ad4: ce e5        	sd	s3, 0xc8(sp)
+ad6: d2 e1        	sd	s4, 0xc0(sp)
+ad8: 56 fd        	sd	s5, 0xb8(sp)
+ada: 5a f9        	sd	s6, 0xb0(sp)
+adc: 5e f5        	sd	s7, 0xa8(sp)
+ade: 62 f1        	sd	s8, 0xa0(sp)
+ae0: 66 ed        	sd	s9, 0x98(sp)
+ae2: 6a e9        	sd	s10, 0x90(sp)
+ae4: 6e e5        	sd	s11, 0x88(sp)
+ae6: 22 a1        	fsd	fs0, 0x80(sp)
+ae8: a6 bc        	fsd	fs1, 0x78(sp)
+aea: ca b8        	fsd	fs2, 0x70(sp)
+aec: 73 26 20 c2  	csrr	a2, vlenb
+af0: 0a 06        	slli	a2, a2, 0x2
+af2: 33 01 c1 40  	sub	sp, sp, a2
+af6: ae 8c        	mv	s9, a1
+af8: 2a 8d        	mv	s10, a0
+afa: 81 45        	li	a1, 0x0
+afc: 37 55 09 00  	lui	a0, 0x95
+b00: 1b 06 c5 fb  	addiw	a2, a0, -0x44
+b04: 37 55 02 00  	lui	a0, 0x25
+b08: 1b 05 f5 3e  	addiw	a0, a0, 0x3ef
+b0c: 2a f0        	sd	a0, 0x20(sp)
+b0e: 19 65        	lui	a0, 0x6
+b10: 9b 06 45 7a  	addiw	a3, a0, 0x7a4
+b14: 09 65        	lui	a0, 0x2
+b16: 1b 05 95 9e  	addiw	a0, a0, -0x617
+b1a: aa e4        	sd	a0, 0x48(sp)
+b1c: d3 04 00 f0  	fmv.w.x	fs1, zero
+b20: 37 05 80 3f  	lui	a0, 0x3f800
+b24: 53 09 05 f0  	fmv.w.x	fs2, a0
+b28: e6 8b        	mv	s7, s9
+b2a: 6a 8c        	mv	s8, s10
+b2c: 81 44        	li	s1, 0x0
+b2e: 32 f4        	sd	a2, 0x28(sp)
+b30: 33 85 c5 02  	mul	a0, a1, a2
+b34: 13 05 05 18  	addi	a0, a0, 0x180
+b38: aa e0        	sd	a0, 0x40(sp)
+b3a: 2e f8        	sd	a1, 0x30(sp)
+b3c: 02 75        	ld	a0, 0x20(sp)
+b3e: 33 85 a5 02  	mul	a0, a1, a0
+b42: 2a fc        	sd	a0, 0x38(sp)
+b44: 5e ec        	sd	s7, 0x18(sp)
+b46: 62 e8        	sd	s8, 0x10(sp)
+b48: b6 e8        	sd	a3, 0x50(sp)
+b4a: 01 4b        	li	s6, 0x0
+b4c: b3 89 d4 02  	mul	s3, s1, a3
+b50: 06 65        	ld	a0, 0x40(sp)
+b52: aa 99        	add	s3, s3, a0
+b54: 26 65        	ld	a0, 0x48(sp)
+b56: a6 f4        	sd	s1, 0x68(sp)
+b58: 33 8a a4 02  	mul	s4, s1, a0
+b5c: 62 75        	ld	a0, 0x38(sp)
+b5e: 2a 9a        	add	s4, s4, a0
+b60: de f0        	sd	s7, 0x60(sp)
+b62: e2 ec        	sd	s8, 0x58(sp)
+b64: 13 05 c0 18  	li	a0, 0x18c
+b68: 33 05 ab 02  	mul	a0, s6, a0
+b6c: 4e 95        	add	a0, a0, s3
+b6e: b3 04 ad 00  	add	s1, s10, a0
+b72: 13 05 30 06  	li	a0, 0x63
+b76: b3 0d ab 02  	mul	s11, s6, a0
+b7a: d2 9d        	add	s11, s11, s4
+b7c: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+b80: de 8a        	mv	s5, s7
+b82: 62 89        	mv	s2, s8
+b84: 07 e4 0a 02  	vle32.v	v8, (s5)
+b88: 57 d4 84 9e  	vfrsub.vf	v8, v8, fs1
+b8c: 73 25 20 c2  	csrr	a0, vlenb
+b90: 06 05        	slli	a0, a0, 0x1
+b92: 0a 95        	add	a0, a0, sp
+b94: 13 05 05 07  	addi	a0, a0, 0x70
+b98: 27 04 85 22  	vs2r.v	v8, (a0)
+b9c: 57 f0 00 cd  	vsetivli	zero, 0x1, e32, m1, ta, ma
+ba0: 57 b4 80 3e  	vslidedown.vi	v8, v8, 0x1
+ba4: 57 15 80 42  	vfmv.f.s	fa0, v8
+ba8: 97 00 00 00  	auipc	ra, 0x0
+bac: e7 80 80 9b  	jalr	-0x648(ra) <.plt+0x30>
+bb0: 53 04 a5 20  	fmv.s	fs0, fa0
+bb4: 57 f0 00 cd  	vsetivli	zero, 0x1, e32, m1, ta, ma
+bb8: 73 25 20 c2  	csrr	a0, vlenb
+bbc: 06 05        	slli	a0, a0, 0x1
+bbe: 0a 95        	add	a0, a0, sp
+bc0: 13 05 05 07  	addi	a0, a0, 0x70
+bc4: 07 04 85 22  	vl2r.v	v8, (a0)
+bc8: 57 15 80 42  	vfmv.f.s	fa0, v8
+bcc: 97 00 00 00  	auipc	ra, 0x0
+bd0: e7 80 40 99  	jalr	-0x66c(ra) <.plt+0x30>
+bd4: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+bd8: 57 54 05 5e  	vfmv.v.f	v8, fa0
+bdc: 57 54 84 3e  	vfslide1down.vf	v8, v8, fs0
+be0: 88 18        	addi	a0, sp, 0x70
+be2: 27 04 85 22  	vs2r.v	v8, (a0)
+be6: 57 f0 00 cd  	vsetivli	zero, 0x1, e32, m1, ta, ma
+bea: 73 25 20 c2  	csrr	a0, vlenb
+bee: 06 05        	slli	a0, a0, 0x1
+bf0: 0a 95        	add	a0, a0, sp
+bf2: 13 05 05 07  	addi	a0, a0, 0x70
+bf6: 07 04 85 22  	vl2r.v	v8, (a0)
+bfa: 57 34 81 3e  	vslidedown.vi	v8, v8, 0x2
+bfe: 57 15 80 42  	vfmv.f.s	fa0, v8
+c02: 97 00 00 00  	auipc	ra, 0x0
+c06: e7 80 e0 95  	jalr	-0x6a2(ra) <.plt+0x30>
+c0a: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+c0e: 88 18        	addi	a0, sp, 0x70
+c10: 07 04 85 22  	vl2r.v	v8, (a0)
+c14: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+c18: 27 04 85 22  	vs2r.v	v8, (a0)
+c1c: 57 f0 00 cd  	vsetivli	zero, 0x1, e32, m1, ta, ma
+c20: 73 25 20 c2  	csrr	a0, vlenb
+c24: 06 05        	slli	a0, a0, 0x1
+c26: 0a 95        	add	a0, a0, sp
+c28: 13 05 05 07  	addi	a0, a0, 0x70
+c2c: 07 04 85 22  	vl2r.v	v8, (a0)
+c30: 57 b4 81 3e  	vslidedown.vi	v8, v8, 0x3
+c34: 57 15 80 42  	vfmv.f.s	fa0, v8
+c38: 97 00 00 00  	auipc	ra, 0x0
+c3c: e7 80 80 92  	jalr	-0x6d8(ra) <.plt+0x30>
+c40: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+c44: 88 18        	addi	a0, sp, 0x70
+c46: 07 04 85 22  	vl2r.v	v8, (a0)
+c4a: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+c4e: 27 04 85 22  	vs2r.v	v8, (a0)
+c52: 57 f0 10 cd  	vsetivli	zero, 0x1, e32, m2, ta, ma
+c56: 73 25 20 c2  	csrr	a0, vlenb
+c5a: 06 05        	slli	a0, a0, 0x1
+c5c: 0a 95        	add	a0, a0, sp
+c5e: 13 05 05 07  	addi	a0, a0, 0x70
+c62: 07 04 85 22  	vl2r.v	v8, (a0)
+c66: 57 34 82 3e  	vslidedown.vi	v8, v8, 0x4
+c6a: 57 15 80 42  	vfmv.f.s	fa0, v8
+c6e: 97 00 00 00  	auipc	ra, 0x0
+c72: e7 80 20 8f  	jalr	-0x70e(ra) <.plt+0x30>
+c76: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+c7a: 88 18        	addi	a0, sp, 0x70
+c7c: 07 04 85 22  	vl2r.v	v8, (a0)
+c80: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+c84: 27 04 85 22  	vs2r.v	v8, (a0)
+c88: 57 f0 10 cd  	vsetivli	zero, 0x1, e32, m2, ta, ma
+c8c: 73 25 20 c2  	csrr	a0, vlenb
+c90: 06 05        	slli	a0, a0, 0x1
+c92: 0a 95        	add	a0, a0, sp
+c94: 13 05 05 07  	addi	a0, a0, 0x70
+c98: 07 04 85 22  	vl2r.v	v8, (a0)
+c9c: 57 b4 82 3e  	vslidedown.vi	v8, v8, 0x5
+ca0: 57 15 80 42  	vfmv.f.s	fa0, v8
+ca4: 97 00 00 00  	auipc	ra, 0x0
+ca8: e7 80 c0 8b  	jalr	-0x744(ra) <.plt+0x30>
+cac: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+cb0: 88 18        	addi	a0, sp, 0x70
+cb2: 07 04 85 22  	vl2r.v	v8, (a0)
+cb6: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+cba: 27 04 85 22  	vs2r.v	v8, (a0)
+cbe: 57 f0 10 cd  	vsetivli	zero, 0x1, e32, m2, ta, ma
+cc2: 73 25 20 c2  	csrr	a0, vlenb
+cc6: 06 05        	slli	a0, a0, 0x1
+cc8: 0a 95        	add	a0, a0, sp
+cca: 13 05 05 07  	addi	a0, a0, 0x70
+cce: 07 04 85 22  	vl2r.v	v8, (a0)
+cd2: 57 34 83 3e  	vslidedown.vi	v8, v8, 0x6
+cd6: 57 15 80 42  	vfmv.f.s	fa0, v8
+cda: 97 00 00 00  	auipc	ra, 0x0
+cde: e7 80 60 88  	jalr	-0x77a(ra) <.plt+0x30>
+ce2: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+ce6: 88 18        	addi	a0, sp, 0x70
+ce8: 07 04 85 22  	vl2r.v	v8, (a0)
+cec: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+cf0: 27 04 85 22  	vs2r.v	v8, (a0)
+cf4: 57 f0 10 cd  	vsetivli	zero, 0x1, e32, m2, ta, ma
+cf8: 73 25 20 c2  	csrr	a0, vlenb
+cfc: 06 05        	slli	a0, a0, 0x1
+cfe: 0a 95        	add	a0, a0, sp
+d00: 13 05 05 07  	addi	a0, a0, 0x70
+d04: 07 04 85 22  	vl2r.v	v8, (a0)
+d08: 57 b4 83 3e  	vslidedown.vi	v8, v8, 0x7
+d0c: 57 15 80 42  	vfmv.f.s	fa0, v8
+d10: 97 00 00 00  	auipc	ra, 0x0
+d14: e7 80 00 85  	jalr	-0x7b0(ra) <.plt+0x30>
+d18: 57 70 14 cd  	vsetivli	zero, 0x8, e32, m2, ta, ma
+d1c: 88 18        	addi	a0, sp, 0x70
+d1e: 07 04 85 22  	vl2r.v	v8, (a0)
+d22: 57 54 85 3e  	vfslide1down.vf	v8, v8, fa0
+d26: 57 54 89 02  	vfadd.vf	v8, v8, fs2
+d2a: 57 54 89 86  	vfrdiv.vf	v8, v8, fs2
+d2e: 27 64 09 02  	vse32.v	v8, (s2)
+d32: 13 09 09 02  	addi	s2, s2, 0x20
+d36: 93 8a 0a 02  	addi	s5, s5, 0x20
+d3a: e3 15 99 e4  	bne	s2, s1, 0xb84 <tir_sigmoid_compute_+0xba>
+d3e: 8a 0d        	slli	s11, s11, 0x2
+d40: 93 84 0d 18  	addi	s1, s11, 0x180
+d44: 33 85 9c 00  	add	a0, s9, s1
+d48: 87 27 05 00  	flw	fa5, 0x0(a0)
+d4c: 53 f5 f4 08  	fsub.s	fa0, fs1, fa5
+d50: 97 00 00 00  	auipc	ra, 0x0
+d54: e7 80 00 81  	jalr	-0x7f0(ra) <.plt+0x30>
+d58: 13 84 4d 18  	addi	s0, s11, 0x184
+d5c: 33 85 8c 00  	add	a0, s9, s0
+d60: 87 27 05 00  	flw	fa5, 0x0(a0)
+d64: 53 77 25 01  	fadd.s	fa4, fa0, fs2
+d68: 53 77 e9 18  	fdiv.s	fa4, fs2, fa4
+d6c: ea 94        	add	s1, s1, s10
+d6e: 27 a0 e4 00  	fsw	fa4, 0x0(s1)
+d72: 53 f5 f4 08  	fsub.s	fa0, fs1, fa5
+d76: 97 f0 ff ff  	auipc	ra, 0xfffff
+d7a: e7 80 a0 7e  	jalr	0x7ea(ra) <completed.0+0xffffc540>
+d7e: 93 84 8d 18  	addi	s1, s11, 0x188
+d82: 33 85 9c 00  	add	a0, s9, s1
+d86: 87 27 05 00  	flw	fa5, 0x0(a0)
+d8a: 53 77 25 01  	fadd.s	fa4, fa0, fs2
+d8e: 53 77 e9 18  	fdiv.s	fa4, fs2, fa4
+d92: 6a 94        	add	s0, s0, s10
+d94: 27 20 e4 00  	fsw	fa4, 0x0(s0)
+d98: 53 f5 f4 08  	fsub.s	fa0, fs1, fa5
+d9c: 97 f0 ff ff  	auipc	ra, 0xfffff
+da0: e7 80 40 7c  	jalr	0x7c4(ra) <completed.0+0xffffc540>
+da4: d3 77 25 01  	fadd.s	fa5, fa0, fs2
+da8: d3 77 f9 18  	fdiv.s	fa5, fs2, fa5
+dac: ea 94        	add	s1, s1, s10
+dae: 27 a0 f4 00  	fsw	fa5, 0x0(s1)
+db2: 05 0b        	addi	s6, s6, 0x1
+db4: 13 0c cc 18  	addi	s8, s8, 0x18c
+db8: 93 8b cb 18  	addi	s7, s7, 0x18c
+dbc: 13 05 30 04  	li	a0, 0x43
+dc0: e3 12 ab da  	bne	s6, a0, 0xb64 <tir_sigmoid_compute_+0x9a>
+dc4: a6 74        	ld	s1, 0x68(sp)
+dc6: 85 04        	addi	s1, s1, 0x1
+dc8: c6 66        	ld	a3, 0x50(sp)
+dca: 66 6c        	ld	s8, 0x58(sp)
+dcc: 36 9c        	add	s8, s8, a3
+dce: 86 7b        	ld	s7, 0x60(sp)
+dd0: b6 9b        	add	s7, s7, a3
+dd2: 5d 45        	li	a0, 0x17
+dd4: e3 9b a4 d6  	bne	s1, a0, 0xb4a <tir_sigmoid_compute_+0x80>
+dd8: c2 75        	ld	a1, 0x30(sp)
+dda: 85 05        	addi	a1, a1, 0x1
+ddc: 22 76        	ld	a2, 0x28(sp)
+dde: 42 6c        	ld	s8, 0x10(sp)
+de0: 32 9c        	add	s8, s8, a2
+de2: e2 6b        	ld	s7, 0x18(sp)
+de4: b2 9b        	add	s7, s7, a2
+de6: 39 45        	li	a0, 0xe
+de8: e3 92 a5 d4  	bne	a1, a0, 0xb2c <tir_sigmoid_compute_+0x62>
+dec: 73 25 20 c2  	csrr	a0, vlenb
+df0: 0a 05        	slli	a0, a0, 0x2
+df2: 2a 91        	add	sp, sp, a0
+df4: ae 70        	ld	ra, 0xe8(sp)
+df6: 0e 74        	ld	s0, 0xe0(sp)
+df8: ee 64        	ld	s1, 0xd8(sp)
+dfa: 4e 69        	ld	s2, 0xd0(sp)
+dfc: ae 69        	ld	s3, 0xc8(sp)
+dfe: 0e 6a        	ld	s4, 0xc0(sp)
+e00: ea 7a        	ld	s5, 0xb8(sp)
+e02: 4a 7b        	ld	s6, 0xb0(sp)
+e04: aa 7b        	ld	s7, 0xa8(sp)
+e06: 0a 7c        	ld	s8, 0xa0(sp)
+e08: ea 6c        	ld	s9, 0x98(sp)
+e0a: 4a 6d        	ld	s10, 0x90(sp)
+e0c: aa 6d        	ld	s11, 0x88(sp)
+e0e: 0a 24        	fld	fs0, 0x80(sp)
+e10: e6 34        	fld	fs1, 0x78(sp)
+e12: 46 39        	fld	fs2, 0x70(sp)
+e14: 6d 61        	addi	sp, sp, 0xf0
+e16: 82 80        	ret
