@@ -1,5 +1,5 @@
 
-/home/leobrasileo/Desktop/UBA/Tesis/TVM-RVV_optimized_operators/operators/add/output/classic/add_vector.so:	file format elf64-littleriscv
+output/intrinsics/intrinsic_add.so:	file format elf64-littleriscv
 
 Disassembly of section .plt:
 
