@@ -37,7 +37,14 @@ def main():
 
     # root@local:~# python -m tvm.exec.rpc_tracker --host=0.0.0.0 --port=9190
     # root@lpi3a:~# tvm_rpc server --host=0.0.0.0 --port=9000 --port-end=9090  --tracker=192.168.1.2:9190 --key=riscv --work-dir=/tmp/
-    target = tvm.target.Target("llvm -num-cores=8 -device=riscv_cpu -mtriple=riscv64-linux-gnu -mcpu=spacemit-x60")
+    # target = tvm.target.Target("llvm -num-cores=8 -device=riscv_cpu -mtriple=riscv64-linux-gnu -mcpu=spacemit-x60")
+    target = tvm.target.Target(
+        "llvm -mtriple=riscv64-unknown-linux-gnu "
+        "-mattr=+64bit,+m,+a,+f,+d,+c,+v "
+        "-mcpu=generic-rv64 "
+        "-mabi=lp64d "
+        "-num-cores=8 "
+    )
 
     register_riscv_intrinsics(target)
 
@@ -85,7 +92,7 @@ def main():
           runner=ms.runner.RPCRunner(
               rpc_config=ms.runner.RPCConfig(
               tracker_host="127.0.0.1",
-                  tracker_port=9190,
+                  tracker_port=9090,
                   tracker_key="riscv",
                   session_timeout_sec=600,
               ),
