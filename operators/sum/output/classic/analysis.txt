@@ -1,0 +1,4 @@
+TVM's default LLVM backend doesn't yet know how to map relax.op.sum along a non-innermost axis to vfredusum.vs
+I need to write a custom TIR schedule that explicitly uses vfredusum, or use a tensorize pass that maps the channel-sum inner loop to an RVV intrinsic
+
+https://rvv-isadoc.readthedocs.io/en/latest/arith_reduction.html#vfredusum

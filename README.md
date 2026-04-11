@@ -29,6 +29,7 @@ Open the file and ensure the following line is set:
 
 ```bash
 set(USE_LLVM ON)
+# or set(USE_LLVM /usr/bin/llvm-config-20)
 ```
 
 Then build TVM:
