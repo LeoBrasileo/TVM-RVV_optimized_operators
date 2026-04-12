@@ -8,13 +8,18 @@ Reproduces TVM issue #18569:
 import os
 os.environ["TVM_NDK_CC"] = "riscv64-linux-gnu-gcc"
 os.environ["CC"] = "riscv64-linux-gnu-gcc"
+from operators.utils import TARGETS, save_and_disasm
 import tvm
 import tvm.te as te
 import tvm.topi as topi
 import numpy as np
+import tvm.relax as relax
+from tvm.script import relax as R
+from tvm.script import tir as T
 
 BATCH    = 14
 FEATURES = 185
+SHAPE = (BATCH, FEATURES)
 DTYPE    = "float32"
 
 OUTPUT_DIR = os.path.join(
@@ -23,70 +28,23 @@ OUTPUT_DIR = os.path.join(
 )
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-TARGETS = {
-    "scalar": {
-        "kind":    "llvm",
-        "mtriple": "riscv64-linux-gnu",
-        "mcpu":    "generic-rv64",
-        "mabi":    "lp64d",
-        "mattr":   ["+64bit", "+m", "+a", "+f", "+d", "+c"],
-    },
-    "vector": {
-        "kind":    "llvm",
-        "mtriple": "riscv64-linux-gnu",
-        "mcpu":    "generic-rv64",
-        "mabi":    "lp64d",
-        # adds +v
-        "mattr":   ["+64bit", "+m", "+a", "+f", "+d", "+c", "+v"],
-    },
-}
+@tvm.script.ir_module
+class SoftMaxModule:
+    @R.function
+    def main(x: R.Tensor(SHAPE, DTYPE)):
+        with R.dataflow():
+            gv = relax.op.nn.softmax(x, axis=1)
+            R.output(gv)
+        return gv
+
 
 
 def build_softmax(target_dict: dict):
-    """
-    Build softmax using the TVM TE pipeline:
-      te.placeholder -> topi.nn.softmax -> te.create_prim_func -> tvm.build
-    """
     target = tvm.target.Target(target_dict)
 
-    # compute using TE + TOPI
-    with target:
-        data = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="data")
-        out  = topi.nn.softmax(data, axis=1)
+    mod = SoftMaxModule
 
-    prim_func = te.create_prim_func([data, out])
-
-    ir_mod = tvm.IRModule({"softmax": prim_func})
-    with tvm.transform.PassContext(opt_level=3):
-        lib = tvm.build(ir_mod, target=target)
-
-    return lib
-
-
-def save_and_disasm(lib, name: str):
-    so_path = os.path.join(OUTPUT_DIR, f"softmax_{name}.so")
-    asm_path = os.path.join(OUTPUT_DIR, f"softmax_{name}.asm")
-    try:
-        # Export using the cross-linker
-        lib.export_library(
-            so_path,
-            cc="riscv64-linux-gnu-gcc"   # tell TVM to use the cross-compiler
-        )
-        print(f"    [INFO] Shared lib -> {so_path}")
-
-        import subprocess
-        result = subprocess.run(
-            ["llvm-objdump-18", "-d", "--mattr=+v", so_path],
-            capture_output=True, text=True, check=True
-        )
-        with open(asm_path, "w") as f:
-            f.write(result.stdout)
-        print(f"    [INFO] Disassembly -> {asm_path}")
-        return so_path, asm_path
-
-    except Exception as e:
-        print(f"    [ERROR] Could not save IR: {e}")
-        return None, None
+    return relax.build(mod, target=target)
 
 
 def main():
@@ -101,8 +59,6 @@ def main():
     print(f"  Output dir  : {OUTPUT_DIR}")
     print(f"{'='*65}\n")
 
-    results = {}
-
     for name, target_dict in TARGETS.items():
         mattr_str = ",".join(target_dict["mattr"])
         print(f"  [{name}]")
@@ -115,8 +71,7 @@ def main():
             print(f"[ERROR]: Build FAILED: {e}")
             continue
 
-        so_path, ir_path = save_and_disasm(lib, name)
-        results[name] = {"ir_path": ir_path, "so_path": so_path}
+        save_and_disasm(lib, name, OUTPUT_DIR)
 
 
 if __name__ == "__main__":

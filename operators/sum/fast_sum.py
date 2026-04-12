@@ -24,27 +24,38 @@ DTYPE    = "float32"
 
 OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "output", "classic"
+    "output", "fast"
 )
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+BH      = BATCH * H
+W_SIZE  = W
+CH_SIZE = CHANNELS
+CH_STRIDE = H * W
 
-@tvm.script.ir_module
-class SumModule:
-    @R.function
-    def main(x: R.Tensor(SHAPE, DTYPE)):
-        with R.dataflow():
-            gv = relax.op.sum(x, axis=AXIS, keepdims=KEEP_DIMS)
-            R.output(gv)
-        return gv
+@T.prim_func
+def fast_sum_tir(
+    X: T.Buffer((BATCH, CHANNELS, H, W), "float32"),
+    Y: T.Buffer((BATCH, 1,        H, W), "float32"),
+):
+    T.func_attr({"tir.noalias": True, "global_symbol": "fast_sum_tir"})
+    for bh in range(BH):
+        for w in range(W_SIZE):
+            with T.block("sum_out"):
+                vb  = T.axis.spatial(BATCH,   bh // H)
+                vh  = T.axis.spatial(H,        bh  % H)
+                vw  = T.axis.spatial(W_SIZE,   w)
+                Y[vb, 0, vh, vw] = T.float32(0.0)
+                for ch in T.serial(CH_SIZE):
+                    with T.block("sum_red"):
+                        vch = T.axis.reduce(CH_SIZE, ch)
+                        Y[vb, 0, vh, vw] = Y[vb, 0, vh, vw] + X[vb, vch, vh, vw]
 
 
 def build_sum(target_dict: dict):
     target = tvm.target.Target(target_dict)
 
-    mod = SumModule
-
-    mod.show()
+    mod = tvm.IRModule({"fast_sum_tir": fast_sum_tir})
 
     with tvm.transform.PassContext(opt_level=3):
         mod = relax.transform.LegalizeOps()(mod)
@@ -59,7 +70,7 @@ def build_sum(target_dict: dict):
 
 def main():
     print("=" * 65)
-    print("  RISC-V RVV sum suboptimal vectorization")
+    print("  RISC-V RVV sum fast vectorization")
     print(f"  Input shape : {SHAPE}  dtype: {DTYPE}")
     print(f"  TVM version : {tvm.__version__}")
     print(f"  LLVM version: {tvm.target.codegen.llvm_version_major()}")
