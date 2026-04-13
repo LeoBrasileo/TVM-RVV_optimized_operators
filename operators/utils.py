@@ -2,8 +2,8 @@
 import os
 
 def save_and_disasm(lib, name: str, output_dir: str):
-    so_path = os.path.join(output_dir, f"softmax_{name}.so")
-    asm_path = os.path.join(output_dir, f"softmax_{name}.asm")
+    so_path = os.path.join(output_dir, f"{name}.so")
+    asm_path = os.path.join(output_dir, f"{name}.asm")
     try:
         lib.export_library(
             so_path,
