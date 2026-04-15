@@ -1,34 +1,28 @@
-#!/usr/bin/env python3
-"""
-[RISC-V RVV] sum nn operator shows suboptimal vectorization (RVV slower than scalar).
-
-"""
-
 from operators.utils import TARGETS, get_output_dir, run_all, save_and_disasm
 import tvm
 import tvm.relax as relax
 from tvm.script import relax as R
 from tvm.script import tir as T
 
-OUTPUT_DIR = get_output_dir(__file__)
-
 BATCH, CHANNELS, H, W = 14, 23, 67, 99
-AXIS = 1
-KEEP_DIMS = True
 SHAPE = (BATCH, CHANNELS, H, W)
 DTYPE    = "float32"
 
+OUTPUT_DIR = get_output_dir(__file__)
 
 @tvm.script.ir_module
-class SumModule:
+class BiasAddModule:
     @R.function
-    def main(x: R.Tensor(SHAPE, DTYPE)):
+    def main(
+        x: R.Tensor((BATCH, CHANNELS, H, W), DTYPE),
+        bias: R.Tensor((CHANNELS,), DTYPE)
+    ):
         with R.dataflow():
-            gv = relax.op.sum(x, axis=AXIS, keepdims=KEEP_DIMS)
+            bias_r = R.reshape(bias, (1, CHANNELS, 1, 1))
+            gv = R.add(x, bias_r)
             R.output(gv)
         return gv
 
 
 if __name__ == "__main__":
-    print(f"TVM {tvm.__version__} | shape {SHAPE} | dtype {DTYPE}")
-    run_all(SumModule, OUTPUT_DIR)
+    run_all(BiasAddModule, OUTPUT_DIR)

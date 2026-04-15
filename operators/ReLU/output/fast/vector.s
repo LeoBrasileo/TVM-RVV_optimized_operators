@@ -1,5 +1,5 @@
 
-/home/leobrasileo/Desktop/UBA/Tesis/TVM-RVV_optimized_operators/operators/ReLU/output/fast/relu_vector.so:	file format elf64-littleriscv
+/home/leobraginski/Desktop/TVM-RVV_optimized_operators/operators/ReLU/output/fast/vector.so:	file format elf64-littleriscv
 
 Disassembly of section .plt:
 

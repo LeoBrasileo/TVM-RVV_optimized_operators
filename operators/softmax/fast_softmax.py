@@ -3,26 +3,20 @@
 Softmax with inline polynomial exp approximation for RISC-V RVV.
 """
 
-import os
-import subprocess
-os.environ["TVM_NDK_CC"] = "riscv64-linux-gnu-gcc"
-os.environ["CC"] = "riscv64-linux-gnu-gcc"
-from operators.utils import TARGETS, save_and_disasm
+from operators.utils import TARGETS, get_output_dir, run_all, save_and_disasm
 import tvm
+import tvm.relax as relax
 import tvm.te as te
 import tvm.tir as tir
-import numpy as np
+from tvm.script import relax as R
+from tvm.script import tir as T
+
+OUTPUT_DIR = get_output_dir(__file__, variant="fast")
 
 BATCH    = 14
 FEATURES = 185
 DTYPE    = "float32"
-
-OUTPUT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "output", "fast"
-)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+SHAPE = (BATCH, FEATURES)
 
 # ---------------------------------------------------------------------------
 # Polynomial exp approximation
@@ -84,74 +78,41 @@ def _poly_exp_expr(xi):
     return p * scale
 
 
-def build_softmax_polyexp(target_dict: dict):
-    target = tvm.target.Target(target_dict)
+def build_fast_softmax_mod():
+    data = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="data")
 
-    with target:
-        data = te.placeholder((BATCH, FEATURES), dtype=DTYPE, name="data")
+    k_max = te.reduce_axis((0, FEATURES), name="k_max")
+    row_max = te.compute(
+        (BATCH,),
+        lambda b: te.max(data[b, k_max], axis=k_max),
+        name="row_max"
+    )
 
-        k_max = te.reduce_axis((0, FEATURES), name="k_max")
-        row_max = te.compute(
-            (BATCH,),
-            lambda b: te.max(data[b, k_max], axis=k_max),
-            name="row_max"
-        )
+    exp_vals = te.compute(
+        (BATCH, FEATURES),
+        lambda b, f: _poly_exp_expr(data[b, f] - row_max[b]),
+        name="exp_vals"
+    )
 
-        exp_vals = te.compute(
-            (BATCH, FEATURES),
-            lambda b, f: _poly_exp_expr(data[b, f] - row_max[b]),
-            name="exp_vals"
-        )
+    k_sum = te.reduce_axis((0, FEATURES), name="k_sum")
+    exp_sum = te.compute(
+        (BATCH,),
+        lambda b: te.sum(exp_vals[b, k_sum], axis=k_sum),
+        name="exp_sum"
+    )
 
-        k_sum = te.reduce_axis((0, FEATURES), name="k_sum")
-        exp_sum = te.compute(
-            (BATCH,),
-            lambda b: te.sum(exp_vals[b, k_sum], axis=k_sum),
-            name="exp_sum"
-        )
+    # normalise
+    out = te.compute(
+        (BATCH, FEATURES),
+        lambda b, f: exp_vals[b, f] / exp_sum[b],
+        name="softmax_out"
+    )
 
-        # normalise
-        out = te.compute(
-            (BATCH, FEATURES),
-            lambda b, f: exp_vals[b, f] / exp_sum[b],
-            name="softmax_out"
-        )
+    prim_func = te.create_prim_func([data, out])
 
-        prim_func = te.create_prim_func([data, out])
-
-    ir_mod = tvm.IRModule({"softmax": prim_func})
-
-    ir_mod.show()
-
-    with tvm.transform.PassContext(opt_level=3):
-        lib = tvm.build(ir_mod, target=target)
-
-    return lib
-
-
-def main():
-    print("=" * 65)
-    print("  RISC-V RVV fast softmax")
-    print(f"  Input shape : ({BATCH}, {FEATURES})  dtype: {DTYPE}")
-    print(f"  TVM version : {tvm.__version__}")
-    print(f"  LLVM version: {tvm.target.codegen.llvm_version_major()}")
-    print(f"  Output dir  : {OUTPUT_DIR}")
-    print("=" * 65 + "\n")
-
-    for name, target_dict in TARGETS.items():
-        mattr_str = ",".join(target_dict["mattr"])
-        print(f"[{name}]  mattr: {mattr_str}")
-
-        try:
-            lib = build_softmax_polyexp(target_dict)
-            print(f"  Build: OK")
-        except Exception as e:
-            print(f"  Build FAILED: {e}")
-            import traceback; traceback.print_exc()
-            continue
-
-        save_and_disasm(lib, name, OUTPUT_DIR)
+    return tvm.IRModule({"fast_softmax": prim_func})
 
 
 if __name__ == "__main__":
-    main()
+    print(f"TVM {tvm.__version__} | shape {SHAPE} | dtype {DTYPE}")
+    run_all(build_fast_softmax_mod(), OUTPUT_DIR)
